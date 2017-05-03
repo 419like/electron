@@ -171,6 +171,44 @@ describe('chromium feature', function () {
       })
       w.loadURL(url)
     })
+
+    it('should register for intercepted file scheme', function (done) {
+      const customSession = session.fromPartition('intercept-file')
+      customSession.protocol.interceptBufferProtocol('file', function (request, callback) {
+        const file = request.url.substr(7)
+        const content = fs.readFileSync(path.normalize(file))
+        const ext = path.extname(file)
+        let type = 'text/html'
+        if (ext === '.js') {
+          type = 'application/javascript'
+        }
+        callback({data: content, mimeType: type})
+      }, function (error) {
+        if (error) done(error)
+      })
+
+      w = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          session: customSession
+        }
+      })
+      w.webContents.on('ipc-message', function (event, args) {
+        if (args[0] === 'reload') {
+          w.webContents.reload()
+        } else if (args[0] === 'error') {
+          done('unexpected error : ' + args[1])
+        } else if (args[0] === 'response') {
+          assert.equal(args[1], 'Hello from serviceWorker!')
+          customSession.clearStorageData({
+            storages: ['serviceworkers']
+          }, function () {
+            customSession.protocol.uninterceptProtocol('file', (error) => done(error))
+          })
+        }
+      })
+      w.loadURL(url)
+    })
   })
 
   describe('window.open', function () {
